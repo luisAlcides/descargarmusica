@@ -128,6 +128,135 @@
       color: #a1a1aa;
       text-align: center;
     }
+
+    details.cookies {
+      border: 1px dashed #333640;
+      border-radius: 12px;
+      padding: 10px 14px;
+      background: #14161c;
+    }
+
+    details.cookies[open] {
+      padding-bottom: 14px;
+    }
+
+    details.cookies summary {
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    details.cookies summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.cookies summary::after {
+      content: "+";
+      font-size: 1.2rem;
+      color: #a1a1aa;
+    }
+
+    details.cookies[open] summary::after {
+      content: "-";
+    }
+
+    .cookies-help {
+      background: transparent;
+      border: 1px solid #7c5cff;
+      color: #c7b9ff;
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .cookies-help:hover {
+      background: #2a1f55;
+    }
+
+    textarea#cookies {
+      width: 100%;
+      margin-top: 10px;
+      min-height: 110px;
+      max-height: 220px;
+      resize: vertical;
+      border: 1px solid #333640;
+      border-radius: 12px;
+      padding: 12px;
+      background: #0f1014;
+      color: #ffffff;
+      font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    textarea#cookies:focus {
+      border-color: #7c5cff;
+    }
+
+    .cookies-hint {
+      display: block;
+      margin-top: 8px;
+      color: #71717a;
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }
+
+    dialog.guide {
+      width: min(520px, calc(100% - 32px));
+      border: 1px solid #2d2f36;
+      border-radius: 18px;
+      background: #181a20;
+      color: #f4f4f5;
+      padding: 0;
+    }
+
+    dialog.guide::backdrop {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    dialog.guide article {
+      padding: 24px;
+    }
+
+    dialog.guide h2 {
+      margin: 0 0 12px;
+      font-size: 1.25rem;
+    }
+
+    dialog.guide ol {
+      padding-left: 20px;
+      margin: 0 0 14px;
+      line-height: 1.55;
+    }
+
+    dialog.guide ol li {
+      margin-bottom: 8px;
+    }
+
+    dialog.guide a {
+      color: #c7b9ff;
+    }
+
+    dialog.guide .warn {
+      margin: 12px 0 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #2a1f55;
+      color: #d8ceff;
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+
+    dialog.guide button {
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -152,8 +281,48 @@
         </select>
       </label>
 
+      <details class="cookies">
+        <summary>
+          <span>Cookies de YouTube (opcional)</span>
+          <button type="button" class="cookies-help" id="cookiesHelp">Como obtenerlas</button>
+        </summary>
+        <textarea id="cookies" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;..." spellcheck="false"></textarea>
+        <small class="cookies-hint">
+          Pega aqui el contenido del archivo cookies.txt exportado desde tu navegador.
+          Solo se usan para esta descarga y se eliminan inmediatamente del servidor.
+        </small>
+      </details>
+
       <button type="submit">Descargar</button>
     </form>
+
+    <dialog class="guide" id="cookiesGuide">
+      <article>
+        <h2>Como obtener tus cookies de YouTube</h2>
+        <ol>
+          <li>
+            Instala una extension que exporte cookies en formato Netscape, por ejemplo
+            <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener">Get cookies.txt LOCALLY</a>
+            (Chrome / Edge / Brave) o
+            <a href="https://addons.mozilla.org/firefox/addon/cookies-txt/" target="_blank" rel="noopener">cookies.txt</a>
+            (Firefox).
+          </li>
+          <li>
+            Abre <a href="https://www.youtube.com" target="_blank" rel="noopener">youtube.com</a>
+            con tu sesion iniciada y, <strong>importante</strong>, en una <em>pestana de incognito</em>
+            (asi las cookies no caducan al cerrar el navegador).
+          </li>
+          <li>Haz clic en el icono de la extension y elige <strong>Export</strong> o <strong>Descargar cookies.txt</strong>.</li>
+          <li>Abre el archivo descargado con un editor de texto y copia <strong>todo</strong> su contenido.</li>
+          <li>Pegalo en el campo "Cookies de YouTube" de esta pagina y dale a Descargar.</li>
+        </ol>
+        <p class="warn">
+          Tus cookies son equivalentes a tu sesion. No las compartas con nadie ni las pegues en
+          sitios que no sean de confianza. Esta app las usa solo para la descarga y luego las borra.
+        </p>
+        <button type="button" id="closeGuide">Entendido</button>
+      </article>
+    </dialog>
 
     <div class="error" id="message"></div>
 
@@ -169,11 +338,29 @@
     const form = document.querySelector("#downloadForm");
     const urlInput = document.querySelector("#url");
     const formatInput = document.querySelector("#format");
+    const cookiesInput = document.querySelector("#cookies");
     const message = document.querySelector("#message");
     const submitBtn = document.querySelector("button[type='submit']");
     const progressContainer = document.querySelector("#progressContainer");
     const progressBar = document.querySelector("#progressBar");
     const progressText = document.querySelector("#progressText");
+    const cookiesGuide = document.querySelector("#cookiesGuide");
+    const cookiesHelp = document.querySelector("#cookiesHelp");
+    const closeGuide = document.querySelector("#closeGuide");
+
+    cookiesHelp.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof cookiesGuide.showModal === "function") {
+        cookiesGuide.showModal();
+      } else {
+        cookiesGuide.setAttribute("open", "");
+      }
+    });
+
+    closeGuide.addEventListener("click", () => {
+      if (cookiesGuide.open) cookiesGuide.close();
+    });
 
     function cleanName(value) {
       return (value || "archivo")
@@ -189,6 +376,7 @@
       event.preventDefault();
       const url = urlInput.value.trim();
       const format = formatInput.value;
+      const cookies = cookiesInput.value.trim();
 
       message.classList.remove("show");
       progressContainer.classList.add("show");
@@ -203,7 +391,7 @@
         const response = await fetch("/api/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, filename, format })
+          body: JSON.stringify({ url, filename, format, cookies })
         });
 
         const data = await response.json();

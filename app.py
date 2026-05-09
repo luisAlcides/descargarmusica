@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import socket
+import tempfile
 import threading
 import uuid
 from pathlib import Path
@@ -102,6 +103,7 @@ def api_start():
     url = data.get("url", "").strip()
     filename = secure_filename(data.get("filename", "").strip()) or "archivo-multimedia"
     fmt = data.get("format", "").strip().lower()
+    cookies_text = (data.get("cookies") or "").strip()
 
     if not fmt or fmt not in ALLOWED_EXTENSIONS:
         fmt = "mp3"
@@ -110,6 +112,13 @@ def api_start():
         validate_url(url)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+    if cookies_text and not _looks_like_netscape_cookies(cookies_text):
+        return jsonify({
+            "error": "El formato de las cookies no es valido. "
+                     "Exportalas con una extension tipo \"Get cookies.txt LOCALLY\" "
+                     "(formato Netscape)."
+        }), 400
 
     task_id = str(uuid.uuid4())
     tasks[task_id] = {
@@ -120,10 +129,26 @@ def api_start():
         "fmt": fmt
     }
 
-    thread = threading.Thread(target=process_download, args=(task_id, url, fmt, filename))
+    thread = threading.Thread(
+        target=process_download,
+        args=(task_id, url, fmt, filename, cookies_text),
+    )
     thread.start()
 
     return jsonify({"task_id": task_id})
+
+
+def _looks_like_netscape_cookies(text: str) -> bool:
+    """Quick sanity check that the pasted text resembles a cookies.txt file."""
+    if "# Netscape HTTP Cookie File" in text:
+        return True
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if len(line.split("\t")) >= 7:
+            return True
+    return False
 
 
 @app.get("/api/progress/<task_id>")
@@ -134,8 +159,9 @@ def api_progress(task_id):
     return jsonify(task)
 
 
-def process_download(task_id, url, fmt, filename):
+def process_download(task_id, url, fmt, filename, cookies_text=""):
     out_tmpl = str(DOWNLOAD_DIR / f"{task_id}.%(ext)s")
+    temp_cookies_path = None
 
     def progress_hook(d):
         if d['status'] == 'downloading':
@@ -173,16 +199,10 @@ def process_download(task_id, url, fmt, filename):
     if FFMPEG_LOCATION:
         ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
 
-    # Use cookies if available
-    cookies_file = BASE_DIR / "cookies.txt"
-    if cookies_file.exists():
-        ydl_opts['cookiefile'] = str(cookies_file)
-    elif os.environ.get("YOUTUBE_COOKIES"):
-        import tempfile
-        fd, temp_cookies_path = tempfile.mkstemp(suffix=".txt")
-        with os.fdopen(fd, 'w') as f:
-            f.write(os.environ.get("YOUTUBE_COOKIES"))
-        ydl_opts['cookiefile'] = temp_cookies_path
+    cookie_source = _select_cookie_source(cookies_text)
+    if cookie_source:
+        cookiefile, temp_cookies_path = cookie_source
+        ydl_opts['cookiefile'] = cookiefile
 
     if fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus']:
         ydl_opts['postprocessors'] = [{
@@ -196,7 +216,7 @@ def process_download(task_id, url, fmt, filename):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            
+
             extracted_title = info.get('title')
             if extracted_title:
                 safe_title = secure_filename(extracted_title)
@@ -210,20 +230,62 @@ def process_download(task_id, url, fmt, filename):
                     filename = f"{filename}.{fmt}"
 
             final_filepath = DOWNLOAD_DIR / f"{task_id}.{fmt}"
-            
+
             if not final_filepath.exists():
                 downloaded_files = list(DOWNLOAD_DIR.glob(f"{task_id}.*"))
                 if not downloaded_files:
                     raise Exception("Error al procesar el archivo.")
                 final_filepath = downloaded_files[0]
-            
+
             tasks[task_id]['final_filename'] = filename
             tasks[task_id]['final_filepath'] = str(final_filepath)
             tasks[task_id]['status'] = 'done'
-                
+
     except Exception as exc:
         tasks[task_id]['status'] = 'error'
         tasks[task_id]['error'] = str(exc)
+    finally:
+        if temp_cookies_path:
+            try:
+                os.remove(temp_cookies_path)
+            except OSError:
+                pass
+
+
+def _select_cookie_source(user_cookies_text: str) -> tuple[str, str | None] | None:
+    """Pick the cookie source for yt-dlp.
+
+    Returns a tuple ``(cookiefile_path, temp_path_to_cleanup_or_None)`` or
+    ``None`` if no cookies are available. User-provided cookies take priority,
+    then a ``cookies.txt`` next to the app, then the ``YOUTUBE_COOKIES``
+    environment variable.
+    """
+    if user_cookies_text:
+        path = _write_temp_cookies(user_cookies_text)
+        return path, path
+
+    cookies_file = BASE_DIR / "cookies.txt"
+    if cookies_file.exists():
+        return str(cookies_file), None
+
+    env_cookies = os.environ.get("YOUTUBE_COOKIES")
+    if env_cookies:
+        path = _write_temp_cookies(env_cookies)
+        return path, path
+
+    return None
+
+
+def _write_temp_cookies(content: str) -> str:
+    """Write the given cookies content to a temp file and return its path."""
+    fd, temp_path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        if "# Netscape HTTP Cookie File" not in content:
+            f.write("# Netscape HTTP Cookie File\n")
+        f.write(content)
+        if not content.endswith("\n"):
+            f.write("\n")
+    return temp_path
 
 
 @app.get("/download/<task_id>")
