@@ -100,6 +100,9 @@ def process_download(task_id, url, fmt, filename):
         'quiet': True,
         'no_color': True,
         'progress_hooks': [progress_hook],
+        'extractor_args': {
+            'youtube': ['player_client=android,web']
+        }
     }
 
     # Use cookies if available
