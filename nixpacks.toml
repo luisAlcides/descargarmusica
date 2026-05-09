@@ -1,2 +1,5 @@
+providers = ["python"]
+
 [phases.setup]
 nixPkgs = ["...", "ffmpeg"]
+aptPkgs = ["...", "ffmpeg"]
