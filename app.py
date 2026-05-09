@@ -173,12 +173,22 @@ def process_download(task_id, url, fmt, filename, cookies_text=""):
             tasks[task_id]['status'] = 'processing'
             tasks[task_id]['progress'] = '100%'
 
-    youtube_args = ['player_client=default,mweb,tv_simply']
+    is_audio = fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus']
+
+    if cookies_text:
+        youtube_args = ['player_client=default,mweb,web_safari,-tv_simply']
+    else:
+        youtube_args = ['player_client=default,mweb,tv_simply']
     if POT_SCRIPT_PATH:
         youtube_args.append(f'getpot_bgutil_script={POT_SCRIPT_PATH}')
 
+    if is_audio:
+        format_selector = 'bestaudio*/bestaudio/best'
+    else:
+        format_selector = 'bv*+ba/b/bestvideo+bestaudio/best'
+
     ydl_opts = {
-        'format': 'bestaudio/best' if fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus'] else 'bestvideo+bestaudio/best',
+        'format': format_selector,
         'outtmpl': out_tmpl,
         'noplaylist': True,
         'quiet': True,
@@ -204,7 +214,7 @@ def process_download(task_id, url, fmt, filename, cookies_text=""):
         cookiefile, temp_cookies_path = cookie_source
         ydl_opts['cookiefile'] = cookiefile
 
-    if fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus']:
+    if is_audio:
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': fmt,
