@@ -102,6 +102,17 @@ def process_download(task_id, url, fmt, filename):
         'progress_hooks': [progress_hook],
     }
 
+    # Use cookies if available
+    cookies_file = BASE_DIR / "cookies.txt"
+    if cookies_file.exists():
+        ydl_opts['cookiefile'] = str(cookies_file)
+    elif os.environ.get("YOUTUBE_COOKIES"):
+        import tempfile
+        fd, temp_cookies_path = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, 'w') as f:
+            f.write(os.environ.get("YOUTUBE_COOKIES"))
+        ydl_opts['cookiefile'] = temp_cookies_path
+
     if fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus']:
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',

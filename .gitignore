@@ -13,6 +13,9 @@ __pycache__/
 # Descargas temporales
 downloads/
 
+# Cookies de YouTube (¡NO SUBIR A GITHUB!)
+cookies.txt
+
 # Archivos de IDE/Editor
 .vscode/
 .cursor/
