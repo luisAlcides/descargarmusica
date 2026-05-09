@@ -101,7 +101,7 @@ def process_download(task_id, url, fmt, filename):
         'no_color': True,
         'progress_hooks': [progress_hook],
         'extractor_args': {
-            'youtube': ['player_client=android,web']
+            'youtube': ['player_client=tv,ios']
         }
     }
 
