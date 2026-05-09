@@ -175,91 +175,149 @@ def process_download(task_id, url, fmt, filename, cookies_text=""):
 
     is_audio = fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus']
 
-    if cookies_text:
-        youtube_args = ['player_client=default,mweb,web_safari,-tv_simply']
-    else:
-        youtube_args = ['player_client=default,mweb,tv_simply']
-    if POT_SCRIPT_PATH:
-        youtube_args.append(f'getpot_bgutil_script={POT_SCRIPT_PATH}')
-
     if is_audio:
-        format_selector = 'bestaudio*/bestaudio/best'
+        format_selector = 'bestaudio*/bestaudio/best/bv*+ba/b/worst'
     else:
-        format_selector = 'bv*+ba/b/bestvideo+bestaudio/best'
+        format_selector = 'bv*+ba/b/bestvideo+bestaudio/best/worst'
 
-    ydl_opts = {
-        'format': format_selector,
-        'outtmpl': out_tmpl,
-        'noplaylist': True,
-        'quiet': True,
-        'no_color': True,
-        'progress_hooks': [progress_hook],
-        'retries': 5,
-        'fragment_retries': 5,
-        'extractor_retries': 3,
-        'http_headers': {
-            'User-Agent': DEFAULT_USER_AGENT,
-            'Accept-Language': 'en-US,en;q=0.9',
-        },
-        'extractor_args': {
-            'youtube': youtube_args,
-        },
-    }
-
-    if FFMPEG_LOCATION:
-        ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
+    if cookies_text:
+        client_strategies = [
+            'web_safari,mweb,web',
+            'mweb,web_safari',
+            'web,android',
+        ]
+    else:
+        client_strategies = [
+            'default,mweb,tv_simply',
+            'web_safari,mweb,tv_simply',
+            'tv_simply,mweb',
+        ]
 
     cookie_source = _select_cookie_source(cookies_text)
+    cookiefile = None
     if cookie_source:
         cookiefile, temp_cookies_path = cookie_source
-        ydl_opts['cookiefile'] = cookiefile
 
-    if is_audio:
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': fmt,
-            'preferredquality': '192',
-        }]
-    elif fmt in ['mp4', 'webm', 'mkv', 'mov']:
-        ydl_opts['merge_output_format'] = fmt
+    last_error = None
+    last_log = ""
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        for strategy_index, clients in enumerate(client_strategies):
+            log_buffer = _YdlLogger()
+            youtube_args = [f'player_client={clients}']
+            if POT_SCRIPT_PATH:
+                youtube_args.append(f'getpot_bgutil_script={POT_SCRIPT_PATH}')
 
-            extracted_title = info.get('title')
-            if extracted_title:
-                safe_title = secure_filename(extracted_title)
-                if safe_title:
-                    filename = f"{safe_title}.{fmt}"
-            else:
-                if "." in filename:
-                    base_name = filename.rsplit(".", 1)[0]
-                    filename = f"{base_name}.{fmt}"
+            ydl_opts = {
+                'format': format_selector,
+                'outtmpl': out_tmpl,
+                'noplaylist': True,
+                'quiet': True,
+                'no_color': True,
+                'progress_hooks': [progress_hook],
+                'retries': 5,
+                'fragment_retries': 5,
+                'extractor_retries': 3,
+                'logger': log_buffer,
+                'http_headers': {
+                    'User-Agent': DEFAULT_USER_AGENT,
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+                'extractor_args': {
+                    'youtube': youtube_args,
+                },
+            }
+
+            if FFMPEG_LOCATION:
+                ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
+
+            if cookiefile:
+                ydl_opts['cookiefile'] = cookiefile
+
+            if is_audio:
+                ydl_opts['postprocessors'] = [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': fmt,
+                    'preferredquality': '192',
+                }]
+            elif fmt in ['mp4', 'webm', 'mkv', 'mov']:
+                ydl_opts['merge_output_format'] = fmt
+
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+
+                extracted_title = info.get('title')
+                if extracted_title:
+                    safe_title = secure_filename(extracted_title)
+                    if safe_title:
+                        filename = f"{safe_title}.{fmt}"
                 else:
-                    filename = f"{filename}.{fmt}"
+                    if "." in filename:
+                        base_name = filename.rsplit(".", 1)[0]
+                        filename = f"{base_name}.{fmt}"
+                    else:
+                        filename = f"{filename}.{fmt}"
 
-            final_filepath = DOWNLOAD_DIR / f"{task_id}.{fmt}"
+                final_filepath = DOWNLOAD_DIR / f"{task_id}.{fmt}"
 
-            if not final_filepath.exists():
-                downloaded_files = list(DOWNLOAD_DIR.glob(f"{task_id}.*"))
-                if not downloaded_files:
-                    raise Exception("Error al procesar el archivo.")
-                final_filepath = downloaded_files[0]
+                if not final_filepath.exists():
+                    downloaded_files = list(DOWNLOAD_DIR.glob(f"{task_id}.*"))
+                    if not downloaded_files:
+                        raise Exception("Error al procesar el archivo.")
+                    final_filepath = downloaded_files[0]
 
-            tasks[task_id]['final_filename'] = filename
-            tasks[task_id]['final_filepath'] = str(final_filepath)
-            tasks[task_id]['status'] = 'done'
+                tasks[task_id]['final_filename'] = filename
+                tasks[task_id]['final_filepath'] = str(final_filepath)
+                tasks[task_id]['status'] = 'done'
+                return
 
-    except Exception as exc:
+            except Exception as exc:
+                last_error = exc
+                last_log = log_buffer.text()
+                for leftover in DOWNLOAD_DIR.glob(f"{task_id}.*"):
+                    try:
+                        leftover.unlink()
+                    except OSError:
+                        pass
+                continue
+
+        message = str(last_error) if last_error else "Error desconocido."
+        if last_log:
+            tail = "\n".join(last_log.strip().splitlines()[-6:])
+            message = f"{message}\n\nDetalles:\n{tail}"
         tasks[task_id]['status'] = 'error'
-        tasks[task_id]['error'] = str(exc)
+        tasks[task_id]['error'] = message
     finally:
         if temp_cookies_path:
             try:
                 os.remove(temp_cookies_path)
             except OSError:
                 pass
+
+
+class _YdlLogger:
+    """Captures yt-dlp log output so we can surface it on errors."""
+
+    def __init__(self) -> None:
+        self._lines: list[str] = []
+
+    def debug(self, msg: str) -> None:
+        if msg.startswith("[debug] "):
+            return
+        self._lines.append(msg)
+
+    def info(self, msg: str) -> None:
+        self._lines.append(msg)
+
+    def warning(self, msg: str) -> None:
+        self._lines.append(f"WARNING: {msg}")
+
+    def error(self, msg: str) -> None:
+        self._lines.append(f"ERROR: {msg}")
+
+    def text(self) -> str:
+        return "\n".join(self._lines)
 
 
 def _select_cookie_source(user_cookies_text: str) -> tuple[str, str | None] | None:
