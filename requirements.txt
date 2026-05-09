@@ -3,3 +3,4 @@ requests
 yt-dlp
 gunicorn
 static-ffmpeg
+bgutil-ytdlp-pot-provider

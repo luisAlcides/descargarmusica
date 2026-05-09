@@ -48,6 +48,32 @@ def _resolve_ffmpeg_location() -> str | None:
 
 FFMPEG_LOCATION = _resolve_ffmpeg_location()
 
+
+def _resolve_pot_script() -> str | None:
+    """Locate the bgutil-ytdlp-pot-provider generate_once.js script.
+
+    Checks the env var ``BGUTIL_POT_SCRIPT`` first, then a few default
+    locations that match the build phase of nixpacks.toml.
+    """
+    candidates = [
+        os.environ.get("BGUTIL_POT_SCRIPT"),
+        "/app/bgutil-pot/server/build/generate_once.js",
+        str(BASE_DIR / "bgutil-pot" / "server" / "build" / "generate_once.js"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return candidate
+    return None
+
+
+POT_SCRIPT_PATH = _resolve_pot_script()
+
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/127.0.0.0 Safari/537.36"
+)
+
 ALLOWED_EXTENSIONS = {
     "aac",
     "flac",
@@ -121,6 +147,10 @@ def process_download(task_id, url, fmt, filename):
             tasks[task_id]['status'] = 'processing'
             tasks[task_id]['progress'] = '100%'
 
+    youtube_args = ['player_client=default,mweb,tv_simply']
+    if POT_SCRIPT_PATH:
+        youtube_args.append(f'getpot_bgutil_script={POT_SCRIPT_PATH}')
+
     ydl_opts = {
         'format': 'bestaudio/best' if fmt in ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus'] else 'bestvideo+bestaudio/best',
         'outtmpl': out_tmpl,
@@ -128,9 +158,16 @@ def process_download(task_id, url, fmt, filename):
         'quiet': True,
         'no_color': True,
         'progress_hooks': [progress_hook],
+        'retries': 5,
+        'fragment_retries': 5,
+        'extractor_retries': 3,
+        'http_headers': {
+            'User-Agent': DEFAULT_USER_AGENT,
+            'Accept-Language': 'en-US,en;q=0.9',
+        },
         'extractor_args': {
-            'youtube': ['player_client=tv,ios']
-        }
+            'youtube': youtube_args,
+        },
     }
 
     if FFMPEG_LOCATION:

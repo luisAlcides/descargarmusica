@@ -1,4 +1,14 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["...", "ffmpeg"]
+aptPkgs = ["...", "ffmpeg", "git"]
+nixPkgs = ["...", "nodejs_20"]
+
+[phases.build]
+cmds = [
+  "git clone --depth 1 --single-branch --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /app/bgutil-pot",
+  "cd /app/bgutil-pot/server && npm ci && npx tsc",
+]
+
+[variables]
+BGUTIL_POT_SCRIPT = "/app/bgutil-pot/server/build/generate_once.js"
