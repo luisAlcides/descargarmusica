@@ -2,3 +2,4 @@ Flask
 requests
 yt-dlp
 gunicorn
+static-ffmpeg

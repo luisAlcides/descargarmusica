@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import shutil
 import socket
 import threading
 import uuid
@@ -19,6 +20,33 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
+
+
+def _resolve_ffmpeg_location() -> str | None:
+    """Return a directory containing ffmpeg/ffprobe, downloading them if needed.
+
+    Tries the system PATH first; falls back to the static-ffmpeg package which
+    ships portable binaries that work on Linux, macOS and Windows.
+    """
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+    if ffmpeg_path and ffprobe_path:
+        return str(Path(ffmpeg_path).parent)
+
+    try:
+        from static_ffmpeg import add_paths  # type: ignore
+
+        add_paths()
+    except Exception:
+        return None
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return str(Path(ffmpeg_path).parent)
+    return None
+
+
+FFMPEG_LOCATION = _resolve_ffmpeg_location()
 
 ALLOWED_EXTENSIONS = {
     "aac",
@@ -104,6 +132,9 @@ def process_download(task_id, url, fmt, filename):
             'youtube': ['player_client=tv,ios']
         }
     }
+
+    if FFMPEG_LOCATION:
+        ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
 
     # Use cookies if available
     cookies_file = BASE_DIR / "cookies.txt"
